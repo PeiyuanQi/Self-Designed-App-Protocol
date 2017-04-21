@@ -9,15 +9,13 @@
 
 #include "bulletin.h"
 
-
-
 int errexit(char *format, char *arg) {
 	fprintf(stderr, format, arg);
 	fprintf(stderr, "\n");
 	exit(EXIT_FAILURE);
 }
 
-pktblt preparePkt(char msg[], int index) {
+pktblt prepareMSGPkt(char msg[], int index) {
 	pktblt aPkt;
 	aPkt.meta.instruction = INST_MSG;
 	char data[LINE_LIMIT];
@@ -28,6 +26,22 @@ pktblt preparePkt(char msg[], int index) {
 		strcpy((char *) aPkt.data, data);
 	} else {
 		fprintf(stderr, "Error: Message is too long!\n");
+	}
+	return aPkt;
+}
+
+pktblt preparePkt(unsigned short instruction, unsigned short optBltIndex, unsigned short optional, char data[]) {
+	pktblt aPkt;
+	aPkt.meta.instruction = instruction;
+	aPkt.meta.optBltIndex = optBltIndex;
+	aPkt.meta.optional = optional;
+
+	if (strlen(data) <= LINE_LIMIT) {
+		aPkt.meta.caplen = strlen(data);
+		strcpy((char *) aPkt.data, data);
+	} else {
+		fprintf(stderr, "Error: Message is too long!\n");
+		//return NULL;
 	}
 	return aPkt;
 }

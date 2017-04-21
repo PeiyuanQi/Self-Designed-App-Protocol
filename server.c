@@ -49,11 +49,6 @@ int main(int argc, char **argv) {
 	//start working
 	loop(sd);
 
-	/* write message to the connection
-	if (write (sd2,argv [MSG_POS],strlen (argv [MSG_POS])) < 0)
-		errexit ("error writing message: %s", argv [MSG_POS]);
-*/
-
 	return EXIT_SUCCESS;
 }
 
@@ -81,8 +76,9 @@ void loop(int sd) {
 
 		memset(&rpacket, 0x0, sizeof(rpacket));
 		ret = read(sd2, &rpacket, sizeof(rpacket));
-		if (ret < 0)
+		if (ret < 0){
 			errexit("reading error", NULL);
+		}
 		if (rpacket.meta.instruction > 0) {
 			switch (rpacket.meta.instruction) {
 				case INST_CONNECT:
@@ -98,8 +94,10 @@ void loop(int sd) {
 						placeHold[curIndex] = true;
 						fprintf(stdout, "C -> S: Add Bulletin: %s.\nS: New bulletin added to position %d\n",
 						        board[curIndex], curIndex);
+						sendPkt(sd2, prepareMSGPkt("Add Success\n",curIndex));
 						curIndex++;
 					} else {
+						fprintf(stdout, "C -> S: Bad Input\nS: Error Message\n");
 						sendErrorPkt(sd2, bad_input);
 						fprintf(stderr, "Error: Exceed input line limit\n");
 					}
@@ -107,14 +105,13 @@ void loop(int sd) {
 				case INST_GETALL:
 					for (int i = 0; i < 10; ++i) {
 						if (placeHold[i]) {
-							sendPkt(sd2, preparePkt(board[i], i));
+							sendPkt(sd2, prepareMSGPkt(board[i], i));
 						}
 					}
 					break;
 				default:
 					break;
 			}
-			fprintf(stdout, "%s\n", rpacket.data);
 		}
 
 	} while (status);

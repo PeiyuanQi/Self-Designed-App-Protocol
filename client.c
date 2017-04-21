@@ -61,18 +61,19 @@ void clientLoop(int sd) {
 	bool status = true;
 	char *line;
 	char **args = malloc(INPUT_LIMIT * sizeof(char *));
-	int argc;
+	int *argc = malloc(sizeof(int));
 
 	do {
-		memset(args,0x0, INPUT_LIMIT * sizeof(char *));
+		memset(args, 0x0, INPUT_LIMIT * sizeof(char *));
 		printf("client $ ");
 		line = read_line();
-		args = split_line(args, line, &argc);
-		status = execute(args,argc);
+		args = split_line(args, line, argc);
+		status = execute(sd, args, argc);
 		//free the memory for next loop
 		free(line);
 	} while (status);
 
+	free(argc);
 	free(args);
 }
 
@@ -87,13 +88,13 @@ char *read_line(void) {
 	return line;
 }
 
-char **split_line(char ** args, char *line, int *argc) {
+char **split_line(char **args, char *line, int *argc) {
 	int pos = 0;
 	//one line is no more than 1280 characters
 	char **tokens = args;
 	char *token;
 
-	argc = 0;
+	(*argc) = 0;
 
 	if (!tokens) {
 		fprintf(stderr, "Error: Allocation error\n");
@@ -103,7 +104,7 @@ char **split_line(char ** args, char *line, int *argc) {
 	while (token != NULL) {
 		tokens[pos] = token;
 		pos++;
-		argc++;
+		(*argc)++;
 		if (1280 <= pos) {
 			fprintf(stderr, "client: Too long input.\n");
 			exit(EXIT_FAILURE);
@@ -114,18 +115,56 @@ char **split_line(char ** args, char *line, int *argc) {
 	return tokens;
 }
 
-bool execute(char **args, int argc) {
+bool execute(int sd, char **args, int *argc) {
+	pktblt tmpPkt;
+	int ret;
+
 	if (args[0] == NULL) {
 		return true; //empty line
-	} else{
-		if (argc >= 1){
-			fprintf(stdout,"%s %d",args[0],argc);
-			return false;
-		}
-		else
-		{
+	} else {
+		if ((*argc) >= 1) {
+			if (strcmp(args[0], "exit") == 0) {
+				if (*argc > 1) {
+					fprintf(stdout, "Usage: exit\n");
+					return true;
+				}
+				fprintf(stdout, "exiting...\n");
+				return false;
+			} else if (strcmp(args[0], "shutdown") == 0) {
+				if (*argc > 1) {
+					fprintf(stdout, "Usage: shutdown\n");
+					return true;
+				}
+				fprintf(stdout, "shutting down server...\n");
+				sendPkt(sd, preparePkt(INST_SHUTDOWN, 0, 0, ""));
+				fprintf(stdout, "exiting...\n");
+				return false;
+			} else if (strcmp(args[0], "add") == 0) {
+				if (*argc > 2) {
+					fprintf(stdout, "Usage: add [message]\n");
+					return true;
+				}
+				sendPkt(sd, preparePkt(INST_ADD, 0, 0, args[1]));
+				memset(&tmpPkt,0x0, sizeof(tmpPkt));
+				ret = read(sd, &tmpPkt, sizeof(tmpPkt));
+				if (ret < 0){
+					errexit("reading error", NULL);
+				}
+				if (tmpPkt.meta.instruction == INST_MSG){
+					fprintf(stdout,"%s\n",(char *)tmpPkt.data);
+					return true;
+				} else {
+					fprintf(stdout,"Time out\n");
+					return true;
+				}
+			} else {
+				fprintf(stdout, "Usage: enter \"help\" for instructions!\n");
+				return true;
+			}
+		} else {
 			fprintf(stdout, "Usage: enter \"help\" for instructions!\n");
 			return true;
 		}
 	}
+	return true;
 }

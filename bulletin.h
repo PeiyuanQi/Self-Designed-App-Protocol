@@ -49,7 +49,9 @@ typedef struct pktblt_t {
 
 int errexit(char *format, char *arg);
 
-pktblt preparePkt(char msg[], int index);
+pktblt prepareMSGPkt(char msg[], int index);
+
+pktblt preparePkt(unsigned short instruction, unsigned short optBltIndex, unsigned short optional, char data[]);
 
 void sendPkt(int sd2, pktblt aPkt);
 

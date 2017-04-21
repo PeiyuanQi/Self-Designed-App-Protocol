@@ -24,8 +24,8 @@ void clientLoop(int sd);
 
 char *read_line(void);
 
-char **split_line(char ** args, char *line, int *argc);
+char **split_line(char **args, char *line, int *argc);
 
-bool execute(char **args,int argc);
+bool execute(int sd, char **args, int *argc);
 
 #endif //P4_CLIENT_H
