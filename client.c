@@ -54,6 +54,7 @@ int main(int argc, char *argv[]) {
 		errexit("cannot connect", NULL);
 
 	memcpy(spacket.data, "hello", 6);
+	spacket.meta.instruction = 1;
 
 	if (write(sd, &spacket, sizeof(spacket)) < 0)
 		errexit("error writing message: %s", (char *) spacket.data);

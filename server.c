@@ -20,14 +20,12 @@ int errexit(char *format, char *arg) {
 	exit(EXIT_FAILURE);
 }
 
-void loop(int sd2);
+void loop(int sd);
 
 int main(int argc, char **argv) {
 	struct sockaddr_in sin;
-	struct sockaddr addr;
 	struct protoent *protoinfo;
-	unsigned int addrlen;
-	int sd, sd2;
+	int sd;
 
 	//get cmd options
 	if (argc != REQUIRED_ARGC)
@@ -44,7 +42,7 @@ int main(int argc, char **argv) {
 	sin.sin_port = htons ((u_short) atoi(argv[PORT_POS]));
 
 	/* allocate a socket */
-	sd = socket(PF_INET, SOCK_STREAM, protoinfo->p_proto);    //  would be SOCK_DGRAM for UDP
+	sd = socket(PF_INET, SOCK_STREAM, protoinfo->p_proto);
 	if (sd < 0)
 		errexit("cannot create socket", NULL);
 
@@ -56,13 +54,8 @@ int main(int argc, char **argv) {
 	if (listen(sd, QUE_LIMIT) < 0)
 		errexit("cannot listen on port %s\n", argv[PORT_POS]);
 
-	/* accept a connection */
-	sd2 = accept(sd, &addr, &addrlen);
-	if (sd2 < 0)
-		errexit("error accepting connection", NULL);
-
 	//start working
-	loop(sd2);
+	loop(sd);
 
 	/* write message to the connection
 	if (write (sd2,argv [MSG_POS],strlen (argv [MSG_POS])) < 0)
@@ -72,9 +65,11 @@ int main(int argc, char **argv) {
 	return EXIT_SUCCESS;
 }
 
-void loop(int sd2) {
+void loop(int sd) {
 	int status = 1;
-	int ret;
+	int ret, sd2;
+	struct sockaddr addr;
+	unsigned int addrlen;
 	pktblt rpacket;
 	char board[BOARD_SIZE][LINE_LIMIT];
 
@@ -85,10 +80,16 @@ void loop(int sd2) {
 
 	//do the loop
 	do {
+		/* accept a connection */
+		sd2 = accept(sd, &addr, &addrlen);
+		if (sd2 < 0)
+			errexit("error accepting connection", NULL);
+
 		memset(&rpacket, 0x0, sizeof(rpacket));
 		ret = read(sd2, &rpacket, sizeof(rpacket));
 		if (ret < 0)
 			errexit("reading error", NULL);
-		fprintf(stdout, "%s\n",rpacket.data);
+		if (rpacket.meta.instruction > 0)
+			fprintf(stdout, "%s\n", rpacket.data);
 	} while (status);
 }

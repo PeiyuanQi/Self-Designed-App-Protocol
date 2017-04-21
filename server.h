@@ -19,7 +19,6 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <string>
 
 #include "bulletin.h"
 
@@ -29,5 +28,6 @@
 #define PROTOCOL "tcp"
 #define BUFLEN 1024
 #define BOARD_SIZE 10
+#define LINE_LIMIT 1024
 
 #endif //P4_SERVER_H
