@@ -10,16 +10,6 @@
 #ifndef P4_SERVER_H
 #define P4_SERVER_H
 
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <strings.h>
-#include <string.h>
-#include <netdb.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-
 #include "bulletin.h"
 
 #define REQUIRED_ARGC 2
@@ -28,6 +18,9 @@
 #define PROTOCOL "tcp"
 #define BUFLEN 1024
 #define BOARD_SIZE 10
-#define LINE_LIMIT 1024
+
+void loop(int sd);
+
+void sendErrorPkt(int sd2, enum error_code errorCode);
 
 #endif //P4_SERVER_H

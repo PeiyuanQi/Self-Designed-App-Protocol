@@ -14,12 +14,6 @@ int usage(char *progname) {
 	exit(EXIT_FAILURE);
 }
 
-int errexit(char *format, char *arg) {
-	fprintf(stderr, format, arg);
-	fprintf(stderr, "\n");
-	exit(EXIT_FAILURE);
-}
-
 int main(int argc, char *argv[]) {
 	struct sockaddr_in sin;
 	struct hostent *hinfo;
@@ -53,8 +47,7 @@ int main(int argc, char *argv[]) {
 	if (connect(sd, (struct sockaddr *) &sin, sizeof(sin)) < 0)
 		errexit("cannot connect", NULL);
 
-	memcpy(spacket.data, "hello", 6);
-	spacket.meta.instruction = 1;
+	clientLoop(sd);
 
 	if (write(sd, &spacket, sizeof(spacket)) < 0)
 		errexit("error writing message: %s", (char *) spacket.data);
@@ -62,4 +55,77 @@ int main(int argc, char *argv[]) {
 	/* close & exit */
 	close(sd);
 	exit(0);
+}
+
+void clientLoop(int sd) {
+	bool status = true;
+	char *line;
+	char **args = malloc(INPUT_LIMIT * sizeof(char *));
+	int argc;
+
+	do {
+		memset(args,0x0, INPUT_LIMIT * sizeof(char *));
+		printf("client $ ");
+		line = read_line();
+		args = split_line(args, line, &argc);
+		status = execute(args,argc);
+		//free the memory for next loop
+		free(line);
+	} while (status);
+
+	free(args);
+}
+
+char *read_line(void) {
+	//refer: Tutorial - Write a Shell in C / Writing Your Own Shell
+	char *line = NULL;
+	size_t linesize = 0; // have getline allocate a buffer for us
+	if (getline(&line, &linesize, stdin) < 0) {
+		fprintf(stderr, "Error Input\n");
+		exit(EXIT_FAILURE);
+	}
+	return line;
+}
+
+char **split_line(char ** args, char *line, int *argc) {
+	int pos = 0;
+	//one line is no more than 1280 characters
+	char **tokens = args;
+	char *token;
+
+	argc = 0;
+
+	if (!tokens) {
+		fprintf(stderr, "Error: Allocation error\n");
+		exit(EXIT_FAILURE);
+	}
+	token = strtok(line, TOK_DELIM);
+	while (token != NULL) {
+		tokens[pos] = token;
+		pos++;
+		argc++;
+		if (1280 <= pos) {
+			fprintf(stderr, "client: Too long input.\n");
+			exit(EXIT_FAILURE);
+		}
+		token = strtok(NULL, TOK_DELIM);
+	}
+	tokens[pos] = NULL;
+	return tokens;
+}
+
+bool execute(char **args, int argc) {
+	if (args[0] == NULL) {
+		return true; //empty line
+	} else{
+		if (argc >= 1){
+			fprintf(stdout,"%s %d",args[0],argc);
+			return false;
+		}
+		else
+		{
+			fprintf(stdout, "Usage: enter \"help\" for instructions!\n");
+			return true;
+		}
+	}
 }

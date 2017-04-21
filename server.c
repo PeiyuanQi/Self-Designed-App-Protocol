@@ -10,17 +10,9 @@
 #include "server.h"
 
 int usage(char *progname) {
-	fprintf(stderr, "Usage: %s port\n", progname);
+	fprintf(stderr, "usage: %s port\n", progname);
 	exit(EXIT_FAILURE);
 }
-
-int errexit(char *format, char *arg) {
-	fprintf(stderr, format, arg);
-	fprintf(stderr, "\n");
-	exit(EXIT_FAILURE);
-}
-
-void loop(int sd);
 
 int main(int argc, char **argv) {
 	struct sockaddr_in sin;
@@ -66,16 +58,18 @@ int main(int argc, char **argv) {
 }
 
 void loop(int sd) {
-	int status = 1;
+	int curIndex = 0;
 	int ret, sd2;
 	struct sockaddr addr;
 	unsigned int addrlen;
 	pktblt rpacket;
 	char board[BOARD_SIZE][LINE_LIMIT];
+	bool placeHold[BOARD_SIZE], status = true;
 
 	//initialize board
 	for (int i = 0; i < 10; ++i) {
 		strcpy(board[i], "");
+		placeHold[i] = false;
 	}
 
 	//do the loop
@@ -89,7 +83,57 @@ void loop(int sd) {
 		ret = read(sd2, &rpacket, sizeof(rpacket));
 		if (ret < 0)
 			errexit("reading error", NULL);
-		if (rpacket.meta.instruction > 0)
+		if (rpacket.meta.instruction > 0) {
+			switch (rpacket.meta.instruction) {
+				case INST_CONNECT:
+					fprintf(stdout, "C -> S: Connecting...\nS -> C: Connected!\n");
+					break;
+				case INST_SHUTDOWN:
+					status = false;
+					fprintf(stdout, "C -> S: Shutdown Server.\nS: Server is shutting down...\n");
+					break;
+				case INST_ADD:
+					if (rpacket.meta.caplen <= LINE_LIMIT) {
+						strcpy(board[curIndex], (char *) rpacket.data);
+						placeHold[curIndex] = true;
+						fprintf(stdout, "C -> S: Add Bulletin: %s.\nS: New bulletin added to position %d\n",
+						        board[curIndex], curIndex);
+						curIndex++;
+					} else {
+						sendErrorPkt(sd2, bad_input);
+						fprintf(stderr, "Error: Exceed input line limit\n");
+					}
+					break;
+				case INST_GETALL:
+					for (int i = 0; i < 10; ++i) {
+						if (placeHold[i]) {
+							sendPkt(sd2, preparePkt(board[i], i));
+						}
+					}
+					break;
+				default:
+					break;
+			}
 			fprintf(stdout, "%s\n", rpacket.data);
+		}
+
 	} while (status);
 }
+
+void sendErrorPkt(int sd2, enum error_code errorCode) {
+	pktblt epacket;
+
+	memset(&epacket, 0x0, sizeof(epacket));
+	switch (errorCode) {
+		case bad_input:
+			epacket.meta.instruction = INST_ERROR;
+			strcpy((char *) epacket.data, "Error: Bad input, line limit exceed!\n");
+			break;
+		default:
+			epacket.meta.instruction = INST_ERROR;
+			strcpy((char *) epacket.data, "Error Unknown!\n");
+			break;
+	}
+	sendPkt(sd2, epacket);
+}
+
