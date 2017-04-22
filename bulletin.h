@@ -35,7 +35,7 @@
 #define INST_ENDTRANS 10
 
 enum error_code {
-	bad_input, delete_empty
+	bad_input, delete_empty, update_empty
 };
 
 typedef struct pktheader_t {

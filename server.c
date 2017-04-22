@@ -85,7 +85,9 @@ void loop(int sd) {
 		if (rpacket.meta.instruction > 0) {
 			switch (rpacket.meta.instruction) {
 				case INST_CONNECT:
-					fprintf(stdout, "C -> S: Connecting...\nS -> C: Connected!\n");
+					fprintf(stdout, "C -> S: Connecting...\n");
+					sendPkt(sd2, preparePkt(INST_MSG, 0, 0, "Connection Established"));
+					fprintf(stdout, "S -> C: Connected!\n");
 					break;
 				case INST_SHUTDOWN:
 					status = false;
@@ -159,6 +161,29 @@ void loop(int sd) {
 						sendPkt(sd2, prepareMSGPkt("Delete Success", tmpIndex));
 					}
 					break;
+				case INST_CLEAR:
+					fprintf(stdout, "C -> S: clearall\n");
+					curIndex = 0;
+					for (int i = 0; i < BOARD_SIZE; ++i) {
+						placeHold[i] = false;
+						strcpy(board[i], "");
+					}
+					fprintf(stdout, "S: board cleared\n");
+					sendPkt(sd2, preparePkt(INST_MSG, 0, 0, "Board Cleared"));
+					break;
+				case INST_UPDATE:
+					tmpIndex = rpacket.meta.optBltIndex;
+					fprintf(stdout, "C -> S: update %d\n", tmpIndex);
+					if (!placeHold[tmpIndex]) {
+						fprintf(stderr, "%d is empty!\n", tmpIndex);
+						sendErrorPkt(sd2, update_empty);
+						fprintf(stdout, "S -> C: Error Message\n");
+					} else {
+						strcpy(board[tmpIndex], (char *) rpacket.data);
+						fprintf(stdout, "S: board %d updated\n", tmpIndex);
+						sendPkt(sd2, prepareMSGPkt("updated", tmpIndex));
+					}
+					break;
 				default:
 					break;
 			}
@@ -178,6 +203,10 @@ void sendErrorPkt(int sd2, enum error_code errorCode) {
 		case delete_empty:
 			epacket.meta.instruction = INST_ERROR;
 			strcpy((char *) epacket.data, "Error: Try to delete an empty bulletin or empty board!");
+			break;
+		case update_empty:
+			epacket.meta.instruction = INST_ERROR;
+			strcpy((char *) epacket.data, "Error: Try to update an empty bulletin!");
 			break;
 		default:
 			epacket.meta.instruction = INST_ERROR;

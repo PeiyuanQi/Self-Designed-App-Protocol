@@ -64,7 +64,24 @@ void clientLoop(int sd) {
 	char *line;
 	char **args = malloc(INPUT_LIMIT * sizeof(char *));
 	int *argc = malloc(sizeof(int));
+	pktblt tmpopkt;
+	int rec;
 
+	//build connection
+	sendPkt(sd, preparePkt(INST_CONNECT, 0, 0, ""));
+	memset(&tmpopkt, 0x0, sizeof(tmpopkt));
+	rec = read(sd, &tmpopkt, sizeof(tmpopkt));
+	if (rec < 0) {
+		errexit("reading error", NULL);
+	}
+	if (tmpopkt.meta.instruction == INST_MSG) {
+		fprintf(stdout, "%s\n", (char *) tmpopkt.data);
+	} else {
+		fprintf(stdout, "Connection time out\n");
+		return;
+	}
+
+	//begin loop
 	do {
 		memset(args, 0x0, INPUT_LIMIT * sizeof(char *));
 		printf("client $ ");
@@ -146,6 +163,7 @@ bool execute(int sd, char **args, int *argc) {
 	} else {
 		if ((*argc) >= 1) {
 			if (strcmp(args[0], "exit") == 0) {
+				//if it is an exit command
 				if (*argc > 1) {
 					fprintf(stdout, "Usage: exit\n");
 					return true;
@@ -163,7 +181,7 @@ bool execute(int sd, char **args, int *argc) {
 				fprintf(stdout, "exiting...\n");
 				return false;
 			} else if (strcmp(args[0], "add") == 0) {
-				//if it is a add command
+				//if it is an add command
 				char tmpMsg[LINE_LIMIT];
 				memset(tmpMsg, 0x0, LINE_LIMIT);
 				if (*argc > 1) {
@@ -176,6 +194,9 @@ bool execute(int sd, char **args, int *argc) {
 							return true;
 						}
 					}
+				} else {
+					fprintf(stdout, "Usage: add [message]\n");
+					return true;
 				}
 				if (strlen(tmpMsg) + strlen(args[(*argc) - 1]) < LINE_LIMIT) {
 					strcat(tmpMsg, args[(*argc) - 1]);
@@ -192,8 +213,7 @@ bool execute(int sd, char **args, int *argc) {
 				if (tmpPkt.meta.instruction == INST_MSG) {
 					fprintf(stdout, "%s\n", (char *) tmpPkt.data);
 					return true;
-				}
-				if (tmpPkt.meta.instruction == INST_ERROR) {
+				} else if (tmpPkt.meta.instruction == INST_ERROR) {
 					fprintf(stderr, "%s\n", (char *) tmpPkt.data);
 					return true;
 				} else {
@@ -201,6 +221,7 @@ bool execute(int sd, char **args, int *argc) {
 					return true;
 				}
 			} else if (strcmp(args[0], "getall") == 0) {
+				//if it getall command
 				if (*argc > 1) {
 					fprintf(stdout, "Usage: getall\n");
 					return true;
@@ -221,6 +242,7 @@ bool execute(int sd, char **args, int *argc) {
 				}
 				return true;
 			} else if (strcmp(args[0], "delete") == 0) {
+				//if it is delete command
 				if (*argc != 2) {
 					fprintf(stdout, "Usage: delete [index]\n");
 					return true;
@@ -232,6 +254,79 @@ bool execute(int sd, char **args, int *argc) {
 					fprintf(stdout, "Usage: delete [index]\n");
 					return true;
 				}
+			} else if (strcmp(args[0], "clearall") == 0) {
+				//if it is clearall command
+				if (*argc > 1) {
+					fprintf(stdout, "Usage: clearall\n");
+					return true;
+				} else {
+					sendPkt(sd, preparePkt(INST_CLEAR, 0, 0, ""));
+					memset(&tmpPkt, 0x0, sizeof(tmpPkt));
+					ret = read(sd, &tmpPkt, sizeof(tmpPkt));
+					if (ret < 0) {
+						errexit("reading error", NULL);
+					}
+					if (tmpPkt.meta.instruction == INST_MSG) {
+						fprintf(stdout, "%s\n", (char *) tmpPkt.data);
+						return true;
+					} else {
+						fprintf(stdout, "Time out\n");
+						return true;
+					}
+				}
+			} else if (strcmp(args[0], "update") == 0) {
+				//if it is a update command
+				char tmpMsg[LINE_LIMIT];
+				int tmpIndex = 0;
+				if (*argc < UPDATE_ARGC) {
+					fprintf(stdout, "Usage: update [index] [mesaage]\n");
+					return true;
+				}
+				if (strlen(args[1]) != 1 || args[1][0] < '0' || args[1][0] > '9') {
+					fprintf(stdout, "Usage: update [index] [mesaage]\n");
+					return true;
+				}
+				tmpIndex = atoi(args[1]);
+				//form msg string
+				memset(tmpMsg, 0x0, LINE_LIMIT);
+				for (int i = UPDATE_MSG_POS; i < ((*argc) - 1); ++i) {
+					if (strlen(tmpMsg) + strlen(args[i]) + 1 < LINE_LIMIT) {
+						strcat(tmpMsg, args[i]);
+						strcat(tmpMsg, " ");
+					} else {
+						fprintf(stderr, "Input too long\n");
+						return true;
+					}
+				}
+				//add last tolken to string
+				if (strlen(tmpMsg) + strlen(args[(*argc) - 1]) < LINE_LIMIT) {
+					strcat(tmpMsg, args[(*argc) - 1]);
+				} else {
+					fprintf(stderr, "Input too long\n");
+					return true;
+				}
+				//send packet
+				sendPkt(sd, preparePkt(INST_UPDATE, tmpIndex, 0, tmpMsg));
+				//get feed back
+				memset(&tmpPkt, 0x0, sizeof(tmpPkt));
+				ret = read(sd, &tmpPkt, sizeof(tmpPkt));
+				if (ret < 0) {
+					errexit("reading error", NULL);
+				}
+				if (tmpPkt.meta.instruction == INST_MSG) {
+					fprintf(stdout, "%s\n", (char *) tmpPkt.data);
+					return true;
+				} else if (tmpPkt.meta.instruction == INST_ERROR) {
+					fprintf(stderr, "%s\n", (char *) tmpPkt.data);
+					return true;
+				} else {
+					fprintf(stdout, "Time out\n");
+					return true;
+				}
+			} else if (strcmp(args[0], "help") == 0) {
+				fprintf(stdout,
+				        "help:\n\texit\n\tshutdown\n\tadd [message]\n\tgetall\n\tdelete [index]\n\tclearall\n\tupdate [index] [message]\n");
+				return true;
 			} else {
 				fprintf(stdout, "Usage: enter \"help\" for instructions!\n");
 				return true;

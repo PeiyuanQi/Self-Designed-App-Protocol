@@ -19,6 +19,9 @@
 #define PORT_POS 2
 #define PROTOCOL "tcp"
 #define INPUT_LIMIT 1280
+#define UPDATE_ARGC 3
+#define INDEX_POS 1
+#define UPDATE_MSG_POS 2
 
 #define TOK_DELIM " \t\r\n\a"
 
