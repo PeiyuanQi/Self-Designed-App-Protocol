@@ -40,7 +40,7 @@ pktblt preparePkt(unsigned short instruction, unsigned short optBltIndex, unsign
 		aPkt.meta.caplen = strlen(data);
 		strcpy((char *) aPkt.data, data);
 	} else {
-		fprintf(stderr, "Error: Message is too long!\n");
+		fprintf(stderr, "Error: Data is too large!\n");
 		//return NULL;
 	}
 	return aPkt;
