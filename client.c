@@ -168,6 +168,7 @@ bool execute(int sd, char **args, int *argc) {
 					fprintf(stdout, "Usage: exit\n");
 					return true;
 				}
+				sendPkt(sd, preparePkt(INST_EXIT, 0, 0, ""));
 				fprintf(stdout, "exiting...\n");
 				return false;
 			} else if (strcmp(args[0], "shutdown") == 0) {
@@ -233,7 +234,8 @@ bool execute(int sd, char **args, int *argc) {
 					fprintf(stdout, "Usage: delete [index]\n");
 					return true;
 				}
-				if (strlen(args[INDEX_POS]) == INDEX_DIGIT_NO && args[INDEX_POS][DIGIT_POS] >= '0' && args[INDEX_POS][DIGIT_POS] <= '9') {
+				if (strlen(args[INDEX_POS]) == INDEX_DIGIT_NO && args[INDEX_POS][DIGIT_POS] >= '0' &&
+				    args[INDEX_POS][DIGIT_POS] <= '9') {
 					sendPkt(sd, preparePkt(INST_DELETE, atoi(args[INDEX_POS]), 0, ""));
 					return checkFD(sd, &tmpPkt);
 				} else {
@@ -257,7 +259,8 @@ bool execute(int sd, char **args, int *argc) {
 					fprintf(stdout, "Usage: update [index] [mesaage]\n");
 					return true;
 				}
-				if (strlen(args[INDEX_POS]) != INDEX_DIGIT_NO || args[INDEX_POS][DIGIT_POS] < '0' || args[INDEX_POS][DIGIT_POS] > '9') {
+				if (strlen(args[INDEX_POS]) != INDEX_DIGIT_NO || args[INDEX_POS][DIGIT_POS] < '0' ||
+				    args[INDEX_POS][DIGIT_POS] > '9') {
 					fprintf(stdout, "Usage: update [index] [mesaage]\n");
 					return true;
 				}

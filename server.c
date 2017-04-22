@@ -184,6 +184,10 @@ void loop(int sd) {
 						sendPkt(sd2, prepareMSGPkt("updated", tmpIndex));
 					}
 					break;
+				case INST_EXIT:
+					fprintf(stdout,"C -> S: Client Exit\nS: Wait for next connection...\n");
+					sd2 = accept(sd, &addr, &addrlen);
+					break;
 				default:
 					break;
 			}

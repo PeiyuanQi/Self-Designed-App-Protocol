@@ -33,6 +33,7 @@
 #define INST_ERROR 8
 #define INST_MSG 9
 #define INST_ENDTRANS 10
+#define INST_EXIT 11
 
 enum error_code {
 	bad_input, delete_empty, update_empty
