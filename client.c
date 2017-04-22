@@ -124,7 +124,7 @@ char **split_line(char **args, char *line, int *argc) {
 		tokens[pos] = token;
 		pos++;
 		(*argc)++;
-		if (1280 <= pos) {
+		if (INPUT_LIMIT <= pos) {
 			fprintf(stderr, "client: Too long input.\n");
 			exit(EXIT_FAILURE);
 		}
@@ -149,7 +149,7 @@ bool checkFD(int sd, pktblt *tmpPkt) {
 		fprintf(stderr, "%s\n", (char *) (*tmpPkt).data);
 		return true;
 	} else {
-		fprintf(stdout, "Time out\n");
+		fprintf(stderr, "Time out\n");
 		return true;
 	}
 }
@@ -161,7 +161,7 @@ bool execute(int sd, char **args, int *argc) {
 	if (args[0] == NULL) {
 		return true; //empty line
 	} else {
-		if ((*argc) >= 1) {
+		if ((*argc) >= SING_ARG_LIMT) {
 			if (strcmp(args[0], "exit") == 0) {
 				//if it is an exit command
 				if (*argc > 1) {
@@ -172,7 +172,7 @@ bool execute(int sd, char **args, int *argc) {
 				return false;
 			} else if (strcmp(args[0], "shutdown") == 0) {
 				//if it is a shutdown command
-				if (*argc > 1) {
+				if (*argc > SING_ARG_LIMT) {
 					fprintf(stdout, "Usage: shutdown\n");
 					return true;
 				}
@@ -184,8 +184,8 @@ bool execute(int sd, char **args, int *argc) {
 				//if it is an add command
 				char tmpMsg[LINE_LIMIT];
 				memset(tmpMsg, 0x0, LINE_LIMIT);
-				if (*argc > 1) {
-					for (int i = 1; i < ((*argc) - 1); ++i) {
+				if (*argc > SING_ARG_LIMT) {
+					for (int i = INDEX_POS; i < ((*argc) - 1); ++i) {
 						if (strlen(tmpMsg) + strlen(args[i]) + 1 < LINE_LIMIT) {
 							strcat(tmpMsg, args[i]);
 							strcat(tmpMsg, " ");
@@ -198,31 +198,17 @@ bool execute(int sd, char **args, int *argc) {
 					fprintf(stdout, "Usage: add [message]\n");
 					return true;
 				}
-				if (strlen(tmpMsg) + strlen(args[(*argc) - 1]) < LINE_LIMIT) {
-					strcat(tmpMsg, args[(*argc) - 1]);
+				if (strlen(tmpMsg) + strlen(args[(*argc) - BESIDE_DIS]) < LINE_LIMIT) {
+					strcat(tmpMsg, args[(*argc) - BESIDE_DIS]);
 				} else {
 					fprintf(stderr, "Input too long\n");
 					return true;
 				}
 				sendPkt(sd, preparePkt(INST_ADD, 0, 0, tmpMsg));
-				memset(&tmpPkt, 0x0, sizeof(tmpPkt));
-				ret = read(sd, &tmpPkt, sizeof(tmpPkt));
-				if (ret < 0) {
-					errexit("reading error", NULL);
-				}
-				if (tmpPkt.meta.instruction == INST_MSG) {
-					fprintf(stdout, "%s\n", (char *) tmpPkt.data);
-					return true;
-				} else if (tmpPkt.meta.instruction == INST_ERROR) {
-					fprintf(stderr, "%s\n", (char *) tmpPkt.data);
-					return true;
-				} else {
-					fprintf(stdout, "Time out\n");
-					return true;
-				}
+				return checkFD(sd, &tmpPkt);
 			} else if (strcmp(args[0], "getall") == 0) {
 				//if it getall command
-				if (*argc > 1) {
+				if (*argc > SING_ARG_LIMT) {
 					fprintf(stdout, "Usage: getall\n");
 					return true;
 				}
@@ -243,12 +229,12 @@ bool execute(int sd, char **args, int *argc) {
 				return true;
 			} else if (strcmp(args[0], "delete") == 0) {
 				//if it is delete command
-				if (*argc != 2) {
+				if (*argc != DELETE_ARGC) {
 					fprintf(stdout, "Usage: delete [index]\n");
 					return true;
 				}
-				if (strlen(args[1]) == 1 && args[1][0] >= '0' && args[1][0] <= '9') {
-					sendPkt(sd, preparePkt(INST_DELETE, atoi(args[1]), 0, ""));
+				if (strlen(args[INDEX_POS]) == INDEX_DIGIT_NO && args[INDEX_POS][DIGIT_POS] >= '0' && args[INDEX_POS][DIGIT_POS] <= '9') {
+					sendPkt(sd, preparePkt(INST_DELETE, atoi(args[INDEX_POS]), 0, ""));
 					return checkFD(sd, &tmpPkt);
 				} else {
 					fprintf(stdout, "Usage: delete [index]\n");
@@ -256,23 +242,12 @@ bool execute(int sd, char **args, int *argc) {
 				}
 			} else if (strcmp(args[0], "clearall") == 0) {
 				//if it is clearall command
-				if (*argc > 1) {
+				if (*argc > SING_ARG_LIMT) {
 					fprintf(stdout, "Usage: clearall\n");
 					return true;
 				} else {
 					sendPkt(sd, preparePkt(INST_CLEAR, 0, 0, ""));
-					memset(&tmpPkt, 0x0, sizeof(tmpPkt));
-					ret = read(sd, &tmpPkt, sizeof(tmpPkt));
-					if (ret < 0) {
-						errexit("reading error", NULL);
-					}
-					if (tmpPkt.meta.instruction == INST_MSG) {
-						fprintf(stdout, "%s\n", (char *) tmpPkt.data);
-						return true;
-					} else {
-						fprintf(stdout, "Time out\n");
-						return true;
-					}
+					return checkFD(sd, &tmpPkt);
 				}
 			} else if (strcmp(args[0], "update") == 0) {
 				//if it is a update command
@@ -282,11 +257,11 @@ bool execute(int sd, char **args, int *argc) {
 					fprintf(stdout, "Usage: update [index] [mesaage]\n");
 					return true;
 				}
-				if (strlen(args[1]) != 1 || args[1][0] < '0' || args[1][0] > '9') {
+				if (strlen(args[INDEX_POS]) != INDEX_DIGIT_NO || args[INDEX_POS][DIGIT_POS] < '0' || args[INDEX_POS][DIGIT_POS] > '9') {
 					fprintf(stdout, "Usage: update [index] [mesaage]\n");
 					return true;
 				}
-				tmpIndex = atoi(args[1]);
+				tmpIndex = atoi(args[INDEX_POS]);
 				//form msg string
 				memset(tmpMsg, 0x0, LINE_LIMIT);
 				for (int i = UPDATE_MSG_POS; i < ((*argc) - 1); ++i) {
@@ -299,8 +274,8 @@ bool execute(int sd, char **args, int *argc) {
 					}
 				}
 				//add last tolken to string
-				if (strlen(tmpMsg) + strlen(args[(*argc) - 1]) < LINE_LIMIT) {
-					strcat(tmpMsg, args[(*argc) - 1]);
+				if (strlen(tmpMsg) + strlen(args[(*argc) - BESIDE_DIS]) < LINE_LIMIT) {
+					strcat(tmpMsg, args[(*argc) - BESIDE_DIS]);
 				} else {
 					fprintf(stderr, "Input too long\n");
 					return true;
@@ -308,21 +283,7 @@ bool execute(int sd, char **args, int *argc) {
 				//send packet
 				sendPkt(sd, preparePkt(INST_UPDATE, tmpIndex, 0, tmpMsg));
 				//get feed back
-				memset(&tmpPkt, 0x0, sizeof(tmpPkt));
-				ret = read(sd, &tmpPkt, sizeof(tmpPkt));
-				if (ret < 0) {
-					errexit("reading error", NULL);
-				}
-				if (tmpPkt.meta.instruction == INST_MSG) {
-					fprintf(stdout, "%s\n", (char *) tmpPkt.data);
-					return true;
-				} else if (tmpPkt.meta.instruction == INST_ERROR) {
-					fprintf(stderr, "%s\n", (char *) tmpPkt.data);
-					return true;
-				} else {
-					fprintf(stdout, "Time out\n");
-					return true;
-				}
+				return checkFD(sd, &tmpPkt);
 			} else if (strcmp(args[0], "help") == 0) {
 				fprintf(stdout,
 				        "help:\n\texit\n\tshutdown\n\tadd [message]\n\tgetall\n\tdelete [index]\n\tclearall\n\tupdate [index] [message]\n");

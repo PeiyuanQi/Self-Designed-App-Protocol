@@ -18,10 +18,20 @@
 #define HOST_POS 1
 #define PORT_POS 2
 #define PROTOCOL "tcp"
+
 #define INPUT_LIMIT 1280
-#define UPDATE_ARGC 3
+
+#define DIGIT_POS 0
+
 #define INDEX_POS 1
+#define INDEX_DIGIT_NO 1
+#define SING_ARG_LIMT 1
+#define BESIDE_DIS 1
+
 #define UPDATE_MSG_POS 2
+#define DELETE_ARGC 2
+
+#define UPDATE_ARGC 3
 
 #define TOK_DELIM " \t\r\n\a"
 
