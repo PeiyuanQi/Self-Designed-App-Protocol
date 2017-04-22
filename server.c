@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
 
 void loop(int sd) {
 	int curIndex = 0;
-	int ret, sd2;
+	int ret, sd2, tmpIndex;
 	struct sockaddr addr;
 	unsigned int addrlen;
 	pktblt rpacket;
@@ -62,21 +62,24 @@ void loop(int sd) {
 	bool placeHold[BOARD_SIZE], status = true;
 
 	//initialize board
-	for (int i = 0; i < 10; ++i) {
+	for (int i = 0; i < BOARD_SIZE; ++i) {
 		strcpy(board[i], "");
 		placeHold[i] = false;
 	}
 
+	//accept a new income connection
+	sd2 = accept(sd, &addr, &addrlen);
+
 	//do the loop
 	do {
 		/* accept a connection */
-		sd2 = accept(sd, &addr, &addrlen);
+
 		if (sd2 < 0)
 			errexit("error accepting connection", NULL);
 
 		memset(&rpacket, 0x0, sizeof(rpacket));
 		ret = read(sd2, &rpacket, sizeof(rpacket));
-		if (ret < 0){
+		if (ret < 0) {
 			errexit("reading error", NULL);
 		}
 		if (rpacket.meta.instruction > 0) {
@@ -89,31 +92,77 @@ void loop(int sd) {
 					fprintf(stdout, "C -> S: Shutdown Server.\nS: Server is shutting down...\n");
 					break;
 				case INST_ADD:
+					if (curIndex >= BOARD_SIZE) {
+						curIndex--;
+						for (int i = 0; i < BOARD_SIZE - INCREMENT; ++i) {
+							strcpy(board[i], board[i + INCREMENT]);
+							placeHold[i] = true;
+						}
+						placeHold[BOARD_SIZE - INCREMENT] = false;
+					}
 					if (rpacket.meta.caplen <= LINE_LIMIT) {
 						strcpy(board[curIndex], (char *) rpacket.data);
 						placeHold[curIndex] = true;
-						fprintf(stdout, "C -> S: Add Bulletin: %s.\nS: New bulletin added to position %d\n",
+						fprintf(stdout, "C -> S: Add Bulletin: %s\nS: New bulletin added to position %d\n",
 						        board[curIndex], curIndex);
-						sendPkt(sd2, prepareMSGPkt("Add Success\n",curIndex));
+						sendPkt(sd2, prepareMSGPkt("Add Success", curIndex));
 						curIndex++;
 					} else {
-						fprintf(stdout, "C -> S: Bad Input\nS: Error Message\n");
+						fprintf(stdout, "C -> S: Bad Input\nS -> C: Error Message\n");
 						sendErrorPkt(sd2, bad_input);
 						fprintf(stderr, "Error: Exceed input line limit\n");
 					}
 					break;
 				case INST_GETALL:
-					for (int i = 0; i < 10; ++i) {
+					fprintf(stdout, "C -> S: getall\n");
+					for (int i = 0; i < BOARD_SIZE; ++i) {
 						if (placeHold[i]) {
 							sendPkt(sd2, prepareMSGPkt(board[i], i));
+							fprintf(stdout, "S -> C: board[%d] content\n", i);
 						}
+					}
+					sendPkt(sd2, preparePkt(INST_ENDTRANS, 0, 0, ""));
+					fprintf(stdout, "S -> C: End Transmission\n");
+					break;
+				case INST_DELETE:
+					if (curIndex == 0) {
+						fprintf(stderr, "delete error\n");
+						sendErrorPkt(sd2, delete_empty);
+					} else {
+						curIndex--;
+					}
+					tmpIndex = rpacket.meta.optBltIndex;
+					fprintf(stdout, "C -> S: delete %d\n", tmpIndex);
+					if (!placeHold[tmpIndex]) {
+						fprintf(stderr, "%d is empty!\n", tmpIndex);
+						sendErrorPkt(sd2, delete_empty);
+						fprintf(stdout, "S -> C: Error Message\n");
+					} else {
+						placeHold[tmpIndex] = false;
+						strcpy(board[tmpIndex], "");
+						for (int i = tmpIndex; i < BOARD_SIZE; ++i) {
+							int nextBulletin = i + INCREMENT;
+							if ((nextBulletin) < BOARD_SIZE) {
+								if (placeHold[nextBulletin]) {
+									strcpy(board[i], board[nextBulletin]);
+									placeHold[i] = true;
+								} else {
+									strcpy(board[i], "");
+									placeHold[i] = false;
+								}
+							} else {
+								strcpy(board[i], "");
+								placeHold[i] = false;
+							}
+						}
+						fprintf(stdout, "Board %d deleted\nS -> C: Delete Suceess\n", tmpIndex);
+						sendPkt(sd2, prepareMSGPkt("Delete Success", tmpIndex));
 					}
 					break;
 				default:
 					break;
 			}
 		}
-
 	} while (status);
 }
 
@@ -124,11 +173,15 @@ void sendErrorPkt(int sd2, enum error_code errorCode) {
 	switch (errorCode) {
 		case bad_input:
 			epacket.meta.instruction = INST_ERROR;
-			strcpy((char *) epacket.data, "Error: Bad input, line limit exceed!\n");
+			strcpy((char *) epacket.data, "Error: Bad input, line limit exceed!");
+			break;
+		case delete_empty:
+			epacket.meta.instruction = INST_ERROR;
+			strcpy((char *) epacket.data, "Error: Try to delete an empty bulletin or empty board!");
 			break;
 		default:
 			epacket.meta.instruction = INST_ERROR;
-			strcpy((char *) epacket.data, "Error Unknown!\n");
+			strcpy((char *) epacket.data, "Error Unknown!");
 			break;
 	}
 	sendPkt(sd2, epacket);

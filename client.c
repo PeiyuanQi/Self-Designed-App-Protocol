@@ -9,6 +9,8 @@
 
 #include "client.h"
 
+bool checkFD(int sd, pktblt *tmpPkt);
+
 int usage(char *progname) {
 	fprintf(stderr, "usage: %s host port\n", progname);
 	exit(EXIT_FAILURE);
@@ -115,6 +117,26 @@ char **split_line(char **args, char *line, int *argc) {
 	return tokens;
 }
 
+bool checkFD(int sd, pktblt *tmpPkt) {
+	int ret;
+	memset(tmpPkt, 0x0, sizeof((*tmpPkt)));
+	ret = read(sd, tmpPkt, sizeof((*tmpPkt)));
+	if (ret < 0) {
+		errexit("reading error", NULL);
+	}
+	if ((*tmpPkt).meta.instruction == INST_MSG) {
+		fprintf(stdout, "%s\n", (char *) (*tmpPkt).data);
+		return true;
+	}
+	if ((*tmpPkt).meta.instruction == INST_ERROR) {
+		fprintf(stderr, "%s\n", (char *) (*tmpPkt).data);
+		return true;
+	} else {
+		fprintf(stdout, "Time out\n");
+		return true;
+	}
+}
+
 bool execute(int sd, char **args, int *argc) {
 	pktblt tmpPkt;
 	int ret;
@@ -131,6 +153,7 @@ bool execute(int sd, char **args, int *argc) {
 				fprintf(stdout, "exiting...\n");
 				return false;
 			} else if (strcmp(args[0], "shutdown") == 0) {
+				//if it is a shutdown command
 				if (*argc > 1) {
 					fprintf(stdout, "Usage: shutdown\n");
 					return true;
@@ -140,21 +163,73 @@ bool execute(int sd, char **args, int *argc) {
 				fprintf(stdout, "exiting...\n");
 				return false;
 			} else if (strcmp(args[0], "add") == 0) {
-				if (*argc > 2) {
-					fprintf(stdout, "Usage: add [message]\n");
+				//if it is a add command
+				char tmpMsg[LINE_LIMIT];
+				memset(tmpMsg, 0x0, LINE_LIMIT);
+				if (*argc > 1) {
+					for (int i = 1; i < ((*argc) - 1); ++i) {
+						if (strlen(tmpMsg) + strlen(args[i]) + 1 < LINE_LIMIT) {
+							strcat(tmpMsg, args[i]);
+							strcat(tmpMsg, " ");
+						} else {
+							fprintf(stderr, "Input too long\n");
+							return true;
+						}
+					}
+				}
+				if (strlen(tmpMsg) + strlen(args[(*argc) - 1]) < LINE_LIMIT) {
+					strcat(tmpMsg, args[(*argc) - 1]);
+				} else {
+					fprintf(stderr, "Input too long\n");
 					return true;
 				}
-				sendPkt(sd, preparePkt(INST_ADD, 0, 0, args[1]));
-				memset(&tmpPkt,0x0, sizeof(tmpPkt));
+				sendPkt(sd, preparePkt(INST_ADD, 0, 0, tmpMsg));
+				memset(&tmpPkt, 0x0, sizeof(tmpPkt));
 				ret = read(sd, &tmpPkt, sizeof(tmpPkt));
-				if (ret < 0){
+				if (ret < 0) {
 					errexit("reading error", NULL);
 				}
-				if (tmpPkt.meta.instruction == INST_MSG){
-					fprintf(stdout,"%s\n",(char *)tmpPkt.data);
+				if (tmpPkt.meta.instruction == INST_MSG) {
+					fprintf(stdout, "%s\n", (char *) tmpPkt.data);
+					return true;
+				}
+				if (tmpPkt.meta.instruction == INST_ERROR) {
+					fprintf(stderr, "%s\n", (char *) tmpPkt.data);
 					return true;
 				} else {
-					fprintf(stdout,"Time out\n");
+					fprintf(stdout, "Time out\n");
+					return true;
+				}
+			} else if (strcmp(args[0], "getall") == 0) {
+				if (*argc > 1) {
+					fprintf(stdout, "Usage: getall\n");
+					return true;
+				}
+				sendPkt(sd, preparePkt(INST_GETALL, 0, 0, ""));
+				memset(&tmpPkt, 0x0, sizeof(tmpPkt));
+				ret = read(sd, &tmpPkt, sizeof(tmpPkt));
+				if (ret < 0) {
+					errexit("reading error", NULL);
+				}
+				while (tmpPkt.meta.instruction != INST_ENDTRANS) {
+					fprintf(stdout, "%s\n", (char *) tmpPkt.data);
+					memset(&tmpPkt, 0x0, sizeof(tmpPkt));
+					ret = read(sd, &tmpPkt, sizeof(tmpPkt));
+					if (ret < 0) {
+						errexit("reading error", NULL);
+					}
+				}
+				return true;
+			} else if (strcmp(args[0], "delete") == 0) {
+				if (*argc != 2) {
+					fprintf(stdout, "Usage: delete [index]\n");
+					return true;
+				}
+				if (strlen(args[1]) == 1 && args[1][0] >= '0' && args[1][0] <= '9') {
+					sendPkt(sd, preparePkt(INST_DELETE, atoi(args[1]), 0, ""));
+					return checkFD(sd, &tmpPkt);
+				} else {
+					fprintf(stdout, "Usage: delete [index]\n");
 					return true;
 				}
 			} else {

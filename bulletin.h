@@ -32,9 +32,10 @@
 #define INST_UPDATE 7
 #define INST_ERROR 8
 #define INST_MSG 9
+#define INST_ENDTRANS 10
 
 enum error_code {
-	bad_input
+	bad_input, delete_empty
 };
 
 typedef struct pktheader_t {

@@ -12,6 +12,8 @@
 
 #include "bulletin.h"
 
+#include <ctype.h>
+
 #define REQUIRED_ARGC 3
 #define HOST_POS 1
 #define PORT_POS 2

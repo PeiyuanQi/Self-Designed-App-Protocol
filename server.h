@@ -18,6 +18,7 @@
 #define PROTOCOL "tcp"
 #define BUFLEN 1024
 #define BOARD_SIZE 10
+#define INCREMENT 1
 
 void loop(int sd);
 
