@@ -184,7 +184,7 @@ void loop(int sd) {
 					}
 					break;
 				case INST_EXIT:
-					fprintf(stdout,"C -> S: Client Exit\nS: Wait for next connection...\n");
+					fprintf(stdout, "C -> S: Client Exit\nS: Wait for next connection...\n");
 					sd2 = accept(sd, &addr, &addrlen);
 					break;
 				default:

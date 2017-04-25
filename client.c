@@ -46,7 +46,7 @@ int main(int argc, char *argv[]) {
 		errexit("cannot create socket", NULL);
 
 	/* connect the socket */
-	fprintf(stdout,"Connecting...\n");
+	fprintf(stdout, "Connecting...\n");
 	if (connect(sd, (struct sockaddr *) &sin, sizeof(sin)) < 0)
 		errexit("cannot connect", NULL);
 
