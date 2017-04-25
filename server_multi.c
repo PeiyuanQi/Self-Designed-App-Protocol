@@ -174,11 +174,6 @@ void loop(int master_socket, int addrlen, struct sockaddr_in address) {
 				}
 				if (rpacket.meta.instruction > 0) {
 					switch (rpacket.meta.instruction) {
-						case INST_CONNECT:
-							fprintf(stdout, "C -> S: Connecting...\n");
-							sendPkt(sd, preparePkt(INST_MSG, 0, 0, "Connection Established"));
-							fprintf(stdout, "S -> C: Connected!\n");
-							break;
 						case INST_SHUTDOWN:
 							status = false;
 							fprintf(stdout, "C -> S: Shutdown Server.\nS: Server is shutting down...\n");
