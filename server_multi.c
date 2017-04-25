@@ -8,8 +8,12 @@
  *	for establishing multi connection coding, I refer to :
  *	http://www.geeksforgeeks.org/socket-programming-in-cc-handling-multiple-clients-on-server-without-multi-threading/
  **********************************/
-
 #include "bulletin.h"
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/select.h>
+#include <arpa/inet.h>
+#include <errno.h>
 
 #define REQUIRED_ARGC 2
 #define PORT_POS 1
@@ -18,7 +22,7 @@
 #define BUFLEN 1024
 #define BOARD_SIZE 10
 #define INCREMENT 1
-#define MAX_CLIENTS_NUM 30
+#define MAX_CLIENTS 30
 #define TRUE 1
 
 void loop(int master_socket, int addrlen, struct sockaddr_in address);
@@ -32,20 +36,10 @@ int usage(char *progname) {
 
 int main(int argc, char **argv) {
 	int opt = TRUE;
-	int max_clients = MAX_CLIENTS_NUM;//at most have 30 clients
-	int master_socket, addrlen, client_socket[30];
-
-	char buffer[BUFLEN + INCREMENT];  //data buffer of 1K
-	//set of socket descriptors
-	fd_set readfds;
+	int master_socket, addrlen;
 
 	struct sockaddr_in address;
 	struct protoent *protoinfo;
-
-	//initialise all client_socket[] to 0 so not checked
-	for (int i = 0; i < max_clients; i++) {
-		client_socket[i] = 0;
-	}
 
 	//get cmd options
 	if (argc != REQUIRED_ARGC)
@@ -94,10 +88,18 @@ int main(int argc, char **argv) {
 
 void loop(int master_socket, int addrlen, struct sockaddr_in address) {
 	int curIndex = 0;
-	int ret, sd2, tmpIndex;
+	int ret, tmpIndex, max_sd, sd, client_socket[MAX_CLIENTS], activity, new_socket;
 	pktblt rpacket;
 	char board[BOARD_SIZE][LINE_LIMIT];
 	bool placeHold[BOARD_SIZE], status = true;
+
+	//set of socket descriptors
+	fd_set readfds;
+
+	//initialise all client_socket[] to 0 so not checked
+	for (int i = 0; i < MAX_CLIENTS; i++) {
+		client_socket[i] = 0;
+	}
 
 	//initialize board
 	for (int i = 0; i < BOARD_SIZE; ++i) {
@@ -105,131 +107,190 @@ void loop(int master_socket, int addrlen, struct sockaddr_in address) {
 		placeHold[i] = false;
 	}
 
-	//accept a new income connection
-	sd2 = accept(sd, &addr, &addrlen);
-
 	//do the loop
 	do {
-		/* accept a connection */
 
-		if (sd2 < 0)
-			errexit("error accepting connection", NULL);
+		//clear the socket set
+		FD_ZERO(&readfds);
 
-		memset(&rpacket, 0x0, sizeof(rpacket));
-		ret = read(sd2, &rpacket, sizeof(rpacket));
-		if (ret < 0) {
-			errexit("reading error", NULL);
+		//add master socket to set
+		FD_SET(master_socket, &readfds);
+		max_sd = master_socket;
+
+		//add child sockets to set
+		for (int i = 0; i < MAX_CLIENTS; i++) {
+			//socket descriptor
+			sd = client_socket[i];
+			//if valid socket descriptor then add to monitor
+			if (sd > 0)
+				FD_SET(sd, &readfds);
+			//highest file descriptor number
+			if (sd > max_sd)
+				max_sd = sd;
 		}
-		if (rpacket.meta.instruction > 0) {
-			switch (rpacket.meta.instruction) {
-				case INST_CONNECT:
-					fprintf(stdout, "C -> S: Connecting...\n");
-					sendPkt(sd2, preparePkt(INST_MSG, 0, 0, "Connection Established"));
-					fprintf(stdout, "S -> C: Connected!\n");
+
+		//wait for an activity on one of the sockets , timeout is NULL
+		activity = select(max_sd + 1, &readfds, NULL, NULL, NULL);
+		if ((activity < 0) && (errno != EINTR)) {
+			errexit("Select Failed", NULL);
+		}
+
+		//for a new income connection
+		if (FD_ISSET(master_socket, &readfds)) {
+			if ((new_socket = accept(master_socket, (struct sockaddr *) &address, (socklen_t *) &addrlen)) < 0) {
+				errexit("Accept Failed", NULL);
+			}
+
+			//New Connection
+			fprintf(stdout, "New Connection , SD: %d , IP: %s , Port: %d \n", new_socket,
+			        inet_ntoa(address.sin_addr), ntohs(address.sin_port));
+			fprintf(stdout, "C -> S: Connecting...\n");
+			sendPkt(new_socket, preparePkt(INST_MSG, 0, 0, "Connection Established"));
+			fprintf(stdout, "S -> C: Connected!\n");
+
+			//add new socket to array of sockets
+			for (int i = 0; i < MAX_CLIENTS; i++) {
+				//if position is empty
+				if (client_socket[i] == 0) {
+					client_socket[i] = new_socket;
+					fprintf(stdout, "Adding to list of sockets as %d\n", i);
 					break;
-				case INST_SHUTDOWN:
-					status = false;
-					fprintf(stdout, "C -> S: Shutdown Server.\nS: Server is shutting down...\n");
-					break;
-				case INST_ADD:
-					if (curIndex >= BOARD_SIZE) {
-						curIndex--;
-						for (int i = 0; i < BOARD_SIZE - INCREMENT; ++i) {
-							strcpy(board[i], board[i + INCREMENT]);
-							placeHold[i] = true;
-						}
-						placeHold[BOARD_SIZE - INCREMENT] = false;
-					}
-					if (rpacket.meta.caplen <= LINE_LIMIT) {
-						strcpy(board[curIndex], (char *) rpacket.data);
-						placeHold[curIndex] = true;
-						fprintf(stdout, "C -> S: Add Bulletin: %s\nS: New bulletin added to position %d\n",
-						        board[curIndex], curIndex);
-						sendPkt(sd2, prepareMSGPkt("Add Success", curIndex));
-						curIndex++;
-					} else {
-						fprintf(stdout, "C -> S: Bad Input\nS -> C: Error Message\n");
-						sendErrorPkt(sd2, bad_input);
-						fprintf(stderr, "Error: Exceed input line limit\n");
-					}
-					break;
-				case INST_GETALL:
-					fprintf(stdout, "C -> S: getall\n");
-					for (int i = 0; i < BOARD_SIZE; ++i) {
-						if (placeHold[i]) {
-							sendPkt(sd2, prepareMSGPkt(board[i], i));
-							fprintf(stdout, "S -> C: board[%d] content\n", i);
-						}
-					}
-					sendPkt(sd2, preparePkt(INST_ENDTRANS, 0, 0, ""));
-					fprintf(stdout, "S -> C: End Transmission\n");
-					break;
-				case INST_DELETE:
-					if (curIndex == 0) {
-						fprintf(stderr, "delete error\n");
-						sendErrorPkt(sd2, delete_empty);
-					} else {
-						curIndex--;
-					}
-					tmpIndex = rpacket.meta.optBltIndex;
-					fprintf(stdout, "C -> S: delete %d\n", tmpIndex);
-					if (!placeHold[tmpIndex]) {
-						fprintf(stderr, "%d is empty!\n", tmpIndex);
-						sendErrorPkt(sd2, delete_empty);
-						fprintf(stdout, "S -> C: Error Message\n");
-					} else {
-						placeHold[tmpIndex] = false;
-						strcpy(board[tmpIndex], "");
-						for (int i = tmpIndex; i < BOARD_SIZE; ++i) {
-							int nextBulletin = i + INCREMENT;
-							if ((nextBulletin) < BOARD_SIZE) {
-								if (placeHold[nextBulletin]) {
-									strcpy(board[i], board[nextBulletin]);
-									placeHold[i] = true;
-								} else {
-									strcpy(board[i], "");
-									placeHold[i] = false;
-								}
-							} else {
-								strcpy(board[i], "");
-								placeHold[i] = false;
-							}
-						}
-						fprintf(stdout, "Board %d deleted\nS -> C: Delete Suceess\n", tmpIndex);
-						sendPkt(sd2, prepareMSGPkt("Delete Success", tmpIndex));
-					}
-					break;
-				case INST_CLEAR:
-					fprintf(stdout, "C -> S: clearall\n");
-					curIndex = 0;
-					for (int i = 0; i < BOARD_SIZE; ++i) {
-						placeHold[i] = false;
-						strcpy(board[i], "");
-					}
-					fprintf(stdout, "S: board cleared\n");
-					sendPkt(sd2, preparePkt(INST_MSG, 0, 0, "Board Cleared"));
-					break;
-				case INST_UPDATE:
-					tmpIndex = rpacket.meta.optBltIndex;
-					fprintf(stdout, "C -> S: update %d\n", tmpIndex);
-					if (!placeHold[tmpIndex]) {
-						fprintf(stderr, "%d is empty!\n", tmpIndex);
-						sendErrorPkt(sd2, update_empty);
-						fprintf(stdout, "S -> C: Error Message\n");
-					} else {
-						strcpy(board[tmpIndex], (char *) rpacket.data);
-						fprintf(stdout, "S: board %d updated\n", tmpIndex);
-						sendPkt(sd2, prepareMSGPkt("updated", tmpIndex));
-					}
-					break;
-				case INST_EXIT:
-					fprintf(stdout, "C -> S: Client Exit\nS: Wait for next connection...\n");
-					sd2 = accept(sd, &addr, &addrlen);
-					break;
-				default:
-					break;
+				}
 			}
 		}
+
+		//else its some IO operation on some other socket
+		for (int i = 0; i < MAX_CLIENTS; i++) {
+			if (!status) break;
+
+			sd = client_socket[i];
+
+			if (FD_ISSET(sd, &readfds)) {
+				//one of sockets is active
+				memset(&rpacket, 0x0, sizeof(rpacket));
+				ret = read(sd, &rpacket, sizeof(rpacket));
+				if (ret < 0) {
+					errexit("reading error", NULL);
+				}
+				if (rpacket.meta.instruction > 0) {
+					switch (rpacket.meta.instruction) {
+						case INST_CONNECT:
+							fprintf(stdout, "C -> S: Connecting...\n");
+							sendPkt(sd, preparePkt(INST_MSG, 0, 0, "Connection Established"));
+							fprintf(stdout, "S -> C: Connected!\n");
+							break;
+						case INST_SHUTDOWN:
+							status = false;
+							fprintf(stdout, "C -> S: Shutdown Server.\nS: Server is shutting down...\n");
+							for (int k = 0; k < MAX_CLIENTS; ++k) {
+								if (client_socket[k] != 0) close(client_socket[k]);
+							}
+							break;
+						case INST_ADD:
+							if (curIndex >= BOARD_SIZE) {
+								curIndex--;
+								for (int j = 0; j < BOARD_SIZE - INCREMENT; ++j) {
+									strcpy(board[j], board[j + INCREMENT]);
+									placeHold[j] = true;
+								}
+								placeHold[BOARD_SIZE - INCREMENT] = false;
+							}
+							if (rpacket.meta.caplen <= LINE_LIMIT) {
+								strcpy(board[curIndex], (char *) rpacket.data);
+								placeHold[curIndex] = true;
+								fprintf(stdout, "C -> S: Add Bulletin: %s\nS: New bulletin added to position %d\n",
+								        board[curIndex], curIndex);
+								sendPkt(sd, prepareMSGPkt("Add Success", curIndex));
+								curIndex++;
+							} else {
+								fprintf(stdout, "C -> S: Bad Input\nS -> C: Error Message\n");
+								sendErrorPkt(sd, bad_input);
+								fprintf(stderr, "Error: Exceed input line limit\n");
+							}
+							break;
+						case INST_GETALL:
+							fprintf(stdout, "C -> S: getall\n");
+							for (int j = 0; j < BOARD_SIZE; ++j) {
+								if (placeHold[j]) {
+									sendPkt(sd, prepareMSGPkt(board[j], j));
+									fprintf(stdout, "S -> C: board[%d] content\n", j);
+								}
+							}
+							sendPkt(sd, preparePkt(INST_ENDTRANS, 0, 0, ""));
+							fprintf(stdout, "S -> C: End Transmission\n");
+							break;
+						case INST_DELETE:
+							if (curIndex == 0) {
+								fprintf(stderr, "delete error\n");
+								sendErrorPkt(sd, delete_empty);
+							} else {
+								curIndex--;
+							}
+							tmpIndex = rpacket.meta.optBltIndex;
+							fprintf(stdout, "C -> S: delete %d\n", tmpIndex);
+							if (!placeHold[tmpIndex]) {
+								fprintf(stderr, "%d is empty!\n", tmpIndex);
+								sendErrorPkt(sd, delete_empty);
+								fprintf(stdout, "S -> C: Error Message\n");
+							} else {
+								placeHold[tmpIndex] = false;
+								strcpy(board[tmpIndex], "");
+								for (int j = tmpIndex; j < BOARD_SIZE; ++j) {
+									int nextBulletin = j + INCREMENT;
+									if ((nextBulletin) < BOARD_SIZE) {
+										if (placeHold[nextBulletin]) {
+											strcpy(board[j], board[nextBulletin]);
+											placeHold[j] = true;
+										} else {
+											strcpy(board[j], "");
+											placeHold[j] = false;
+										}
+									} else {
+										strcpy(board[j], "");
+										placeHold[j] = false;
+									}
+								}
+								fprintf(stdout, "Board %d deleted\nS -> C: Delete Suceess\n", tmpIndex);
+								sendPkt(sd, prepareMSGPkt("Delete Success", tmpIndex));
+							}
+							break;
+						case INST_CLEAR:
+							fprintf(stdout, "C -> S: clearall\n");
+							curIndex = 0;
+							for (int j = 0; j < BOARD_SIZE; ++j) {
+								placeHold[j] = false;
+								strcpy(board[j], "");
+							}
+							fprintf(stdout, "S: board cleared\n");
+							sendPkt(sd, preparePkt(INST_MSG, 0, 0, "Board Cleared"));
+							break;
+						case INST_UPDATE:
+							tmpIndex = rpacket.meta.optBltIndex;
+							fprintf(stdout, "C -> S: update %d\n", tmpIndex);
+							if (!placeHold[tmpIndex]) {
+								fprintf(stderr, "%d is empty!\n", tmpIndex);
+								sendErrorPkt(sd, update_empty);
+								fprintf(stdout, "S -> C: Error Message\n");
+							} else {
+								strcpy(board[tmpIndex], (char *) rpacket.data);
+								fprintf(stdout, "S: board %d updated\n", tmpIndex);
+								sendPkt(sd, prepareMSGPkt("updated", tmpIndex));
+							}
+							break;
+						case INST_EXIT:
+							fprintf(stdout, "C -> S: Client Exit\nS: Wait for other connection...\n");
+							//Close the socket and mark as 0 in list for reuse
+							close(sd);
+							client_socket[i] = 0;
+							break;
+						default:
+							break;
+					}
+				}
+			}
+		}
+
+
 	} while (status);
 }
 
