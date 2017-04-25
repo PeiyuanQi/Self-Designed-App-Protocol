@@ -130,8 +130,6 @@ void loop(int sd) {
 					if (curIndex == 0) {
 						fprintf(stderr, "delete error\n");
 						sendErrorPkt(sd2, delete_empty);
-					} else {
-						curIndex--;
 					}
 					tmpIndex = rpacket.meta.optBltIndex;
 					fprintf(stdout, "C -> S: delete %d\n", tmpIndex);
@@ -140,6 +138,7 @@ void loop(int sd) {
 						sendErrorPkt(sd2, delete_empty);
 						fprintf(stdout, "S -> C: Error Message\n");
 					} else {
+						curIndex--;
 						placeHold[tmpIndex] = false;
 						strcpy(board[tmpIndex], "");
 						for (int i = tmpIndex; i < BOARD_SIZE; ++i) {
