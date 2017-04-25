@@ -91,6 +91,8 @@ void loop(int sd) {
 					break;
 				case INST_SHUTDOWN:
 					status = false;
+					close(sd2);
+					close(sd);
 					fprintf(stdout, "C -> S: Shutdown Server.\nS: Server is shutting down...\n");
 					break;
 				case INST_ADD:
@@ -185,6 +187,7 @@ void loop(int sd) {
 					break;
 				case INST_EXIT:
 					fprintf(stdout, "C -> S: Client Exit\nS: Wait for next connection...\n");
+					close(sd2);
 					sd2 = accept(sd, &addr, &addrlen);
 					break;
 				default:
