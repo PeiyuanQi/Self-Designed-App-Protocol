@@ -5,9 +5,25 @@
  * Created Data: 	25/04/2017
  * Description:
  *	implementation of server which accept multi client
+ *	for establishing multi connection coding, I refer to :
+ *	http://www.geeksforgeeks.org/socket-programming-in-cc-handling-multiple-clients-on-server-without-multi-threading/
  **********************************/
 
-#include "server.h"
+#include "bulletin.h"
+
+#define REQUIRED_ARGC 2
+#define PORT_POS 1
+#define QUE_LIMIT 1
+#define PROTOCOL "tcp"
+#define BUFLEN 1024
+#define BOARD_SIZE 10
+#define INCREMENT 1
+#define MAX_CLIENTS_NUM 30
+#define TRUE 1
+
+void loop(int master_socket, int addrlen, struct sockaddr_in address);
+
+void sendErrorPkt(int sd2, enum error_code errorCode);
 
 int usage(char *progname) {
 	fprintf(stderr, "usage: %s port\n", progname);
@@ -15,9 +31,21 @@ int usage(char *progname) {
 }
 
 int main(int argc, char **argv) {
-	struct sockaddr_in sin;
+	int opt = TRUE;
+	int max_clients = MAX_CLIENTS_NUM;//at most have 30 clients
+	int master_socket, addrlen, client_socket[30];
+
+	char buffer[BUFLEN + INCREMENT];  //data buffer of 1K
+	//set of socket descriptors
+	fd_set readfds;
+
+	struct sockaddr_in address;
 	struct protoent *protoinfo;
-	int sd;
+
+	//initialise all client_socket[] to 0 so not checked
+	for (int i = 0; i < max_clients; i++) {
+		client_socket[i] = 0;
+	}
 
 	//get cmd options
 	if (argc != REQUIRED_ARGC)
@@ -27,36 +55,46 @@ int main(int argc, char **argv) {
 	if ((protoinfo = getprotobyname(PROTOCOL)) == NULL)
 		errexit("cannot find protocol information for %s", PROTOCOL);
 
+	//create a master socket
+	if ((master_socket = socket(PF_INET, SOCK_STREAM, protoinfo->p_proto)) == 0) {
+		errexit("Master-socket failed", NULL);
+	}
+
+	//set master socket to allow multiple connections ,
+	if (setsockopt(master_socket, SOL_SOCKET, SO_REUSEADDR, (char *) &opt, sizeof(opt)) < 0) {
+		errexit("Set Socket OPT failed", NULL);
+	}
+
 	/* setup endpoint info */
-	memset((char *) &sin, 0x0, sizeof(sin));
-	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = INADDR_ANY;
-	sin.sin_port = htons ((u_short) atoi(argv[PORT_POS]));
+	memset((char *) &address, 0x0, sizeof(address));
+	address.sin_family = AF_INET;
+	address.sin_addr.s_addr = INADDR_ANY;
+	address.sin_port = htons ((u_short) atoi(argv[PORT_POS]));
 
-	/* allocate a socket */
-	sd = socket(PF_INET, SOCK_STREAM, protoinfo->p_proto);
-	if (sd < 0)
-		errexit("cannot create socket", NULL);
+	//bind the socket to localhost port 8888
+	if (bind(master_socket, (struct sockaddr *) &address, sizeof(address)) < 0) {
+		errexit("Bind Failed", NULL);
+	}
+	printf("Listen on port %d \n", atoi(argv[PORT_POS]));
 
-	/* bind the socket */
-	if (bind(sd, (struct sockaddr *) &sin, sizeof(sin)) < 0)
-		errexit("cannot bind to port %s", argv[PORT_POS]);
+	//try to specify maximum of 3 pending connections for the master socket
+	if (listen(master_socket, 3) < 0) {
+		errexit("Listen Failed", NULL);
+	}
 
-	/* listen for incoming connections */
-	if (listen(sd, QUE_LIMIT) < 0)
-		errexit("cannot listen on port %s\n", argv[PORT_POS]);
+	//accept the incoming connection
+	addrlen = sizeof(address);
+	fprintf(stdout, "Waiting for connections ...\n");
 
 	//start working
-	loop(sd);
+	loop(master_socket, addrlen, address);
 
 	return EXIT_SUCCESS;
 }
 
-void loop(int sd) {
+void loop(int master_socket, int addrlen, struct sockaddr_in address) {
 	int curIndex = 0;
 	int ret, sd2, tmpIndex;
-	struct sockaddr addr;
-	unsigned int addrlen;
 	pktblt rpacket;
 	char board[BOARD_SIZE][LINE_LIMIT];
 	bool placeHold[BOARD_SIZE], status = true;
@@ -185,7 +223,7 @@ void loop(int sd) {
 					}
 					break;
 				case INST_EXIT:
-					fprintf(stdout,"C -> S: Client Exit\nS: Wait for next connection...\n");
+					fprintf(stdout, "C -> S: Client Exit\nS: Wait for next connection...\n");
 					sd2 = accept(sd, &addr, &addrlen);
 					break;
 				default:

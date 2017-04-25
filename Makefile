@@ -11,7 +11,7 @@ proj4: client.c bulletin.c bulletin.h client.h
 proj4d: server.c bulletin.c bulletin.h server.h
 	$(CC) $(CFLAGS) -o $@ server.c bulletin.c
 
-multi: server_multi.c bulletin.c bulletin.h server.h
+multi: server_multi.c bulletin.c bulletin.h
 	$(CC) $(CFLAGS) -o proj4d server_multi.c bulletin.c
 
 clean:
