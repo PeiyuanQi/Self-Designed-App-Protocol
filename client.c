@@ -140,7 +140,7 @@ bool checkFD(int sd, pktblt *tmpPkt) {
 	memset(tmpPkt, 0x0, sizeof((*tmpPkt)));
 	ret = read(sd, tmpPkt, sizeof((*tmpPkt)));
 	if (ret < 0) {
-		errexit("reading error", NULL);
+		errexit("Reading Error", NULL);
 	}
 	if ((*tmpPkt).meta.instruction == INST_MSG) {
 		fprintf(stdout, "%s\n", (char *) (*tmpPkt).data);
@@ -150,8 +150,8 @@ bool checkFD(int sd, pktblt *tmpPkt) {
 		fprintf(stderr, "%s\n", (char *) (*tmpPkt).data);
 		return true;
 	} else {
-		fprintf(stderr, "Time out\n");
-		return true;
+		fprintf(stderr, "Lost Connection\n");
+		return false;
 	}
 }
 
@@ -221,11 +221,11 @@ bool execute(int sd, char **args, int *argc) {
 					errexit("reading error", NULL);
 				}
 				while (tmpPkt.meta.instruction != INST_ENDTRANS) {
-					fprintf(stdout, "%s\n", (char *) tmpPkt.data);
+					if (tmpPkt.meta.instruction == INST_MSG) fprintf(stdout, "%s\n", (char *) tmpPkt.data);
 					memset(&tmpPkt, 0x0, sizeof(tmpPkt));
 					ret = read(sd, &tmpPkt, sizeof(tmpPkt));
 					if (ret < 0) {
-						errexit("reading error", NULL);
+						errexit("Reading error, might lost connection", NULL);
 					}
 				}
 				return true;
