@@ -1,4 +1,4 @@
-# EECS325 Course Project 4 Self-Designed Protocol
+# Computer Networks Course Project 4 Self-Designed Protocol
 
 ## Introduction
 
